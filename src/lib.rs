@@ -1,6 +1,7 @@
-pub mod actions;
+#![cfg(target_os = "macos")]
+
 mod backend;
-#[cfg(target_os = "macos")]
+pub mod actions;
 pub mod error;
 
 use crate::backend::get_frontmost_window_origin;
@@ -14,6 +15,9 @@ use backend::toggle_fullscreen;
 use error::Error;
 use objc2_core_foundation::{CGPoint, CGRect, CGSize};
 
+/// Perform this action to the focused window.
+///
+/// NOTE: this function should be called in the main thread, or it will error out.
 pub fn apply_to_focused_window(action: Action) -> Result<(), Error> {
     let visible_frame = get_active_screen_visible_frame()?;
 
