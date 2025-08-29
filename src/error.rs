@@ -10,4 +10,8 @@ pub enum Error {
     NotInMainThread,
     /// No monitor detected.
     NoDisplay,
+    /// Already the last desktop.
+    AlreadyInLastDesktop,
+    /// Already the first desktop.
+    AlreadyInFirstDesktop,
 }

@@ -1,12 +1,13 @@
 #![cfg(target_os = "macos")]
 
-mod backend;
 pub mod actions;
+mod backend;
 pub mod error;
 
 use crate::backend::get_frontmost_window_origin;
 use crate::backend::list_visible_frame_of_all_screens;
 use crate::backend::move_window;
+use crate::backend::next_desktop;
 use crate::backend::set_window_frame;
 use actions::Action;
 use backend::get_active_screen_visible_frame;
@@ -649,9 +650,7 @@ pub fn apply_to_focused_window(action: Action) -> Result<(), Error> {
                 .min(visible_frame.origin.x + visible_frame.size.width - window_size.width);
             move_window(new_x, window_origin.y)
         }
-        Action::NextDesktop => {
-            todo!()
-        }
+        Action::NextDesktop => next_desktop(),
         Action::PreviousDesktop => {
             todo!()
         }

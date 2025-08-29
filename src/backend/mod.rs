@@ -19,8 +19,16 @@ use objc2_core_foundation::CGPoint;
 use objc2_core_foundation::CGRect;
 use objc2_core_foundation::CGSize;
 use objc2_core_foundation::Type;
+use objc2_core_foundation::{CFArray, CFDictionary, CFNumber};
+use objc2_core_graphics::CGWindowID;
 
+use crate::backend::private::CGSConnectionID;
 use crate::error::Error;
+
+use private::CGSCopyManagedDisplaySpaces;
+use private::CGSGetActiveSpace;
+use private::CGSMainConnectionID;
+use private::CGSSpaceID;
 
 pub fn frame_contains_point(frame: &CGRect, point: &CGPoint) -> bool {
     let min = frame.min();
@@ -63,6 +71,158 @@ fn get_frontmost_window() -> Result<CFRetained<AXUIElement>, Error> {
     let window = unsafe { CFRetained::from_raw(NonNull::new(window_element).unwrap()) };
 
     Ok(window)
+}
+
+pub(crate) fn get_frontmost_window_id() -> Result<CGWindowID, Error> {
+    let element = get_frontmost_window()?;
+    let ptr: NonNull<AXUIElement> = CFRetained::as_ptr(&element);
+
+    let mut window_id_buffer: CGWindowID = 0;
+    let error =
+        unsafe { private::_AXUIElementGetWindow(ptr.as_ptr(), &mut window_id_buffer as *mut _) };
+    if error != AXError::Success {
+        return Err(Error::AXError(error));
+    }
+
+    Ok(window_id_buffer)
+}
+
+fn workspace_ids_grouped_by_display() -> Vec<Vec<CGSSpaceID>> {
+    unsafe {
+        let mut ret = Vec::new();
+        let conn = CGSMainConnectionID();
+
+        let display_spaces_raw = CGSCopyManagedDisplaySpaces(conn);
+        let display_spaces: CFRetained<CFArray> =
+            CFRetained::from_raw(NonNull::new(display_spaces_raw).unwrap());
+
+        let key_spaces: CFRetained<CFString> = CFString::from_static_str("Spaces");
+        let key_spaces_ptr: NonNull<CFString> = CFRetained::as_ptr(&key_spaces);
+        let key_id64: CFRetained<CFString> = CFString::from_static_str("id64");
+        let key_id64_ptr: NonNull<CFString> = CFRetained::as_ptr(&key_id64);
+
+        for i in 0..display_spaces.count() {
+            let mut workspaces_of_this_display = Vec::new();
+
+            let dict_ref = display_spaces.value_at_index(i);
+            let dict: &CFDictionary = &*(dict_ref as *const CFDictionary);
+
+            let mut ptr_to_value_buffer: *const c_void = std::ptr::null();
+            let key_exists = dict.value_if_present(
+                key_spaces_ptr.as_ptr().cast::<c_void>().cast_const(),
+                &mut ptr_to_value_buffer as *mut _,
+            );
+            assert!(key_exists);
+            assert!(!ptr_to_value_buffer.is_null());
+
+            let spaces_raw: *const CFArray = ptr_to_value_buffer.cast::<CFArray>();
+
+            let spaces = &*spaces_raw;
+
+            for idx in 0..spaces.count() {
+                let workspace_dictionary: &CFDictionary =
+                    &*spaces.value_at_index(idx).cast::<CFDictionary>();
+
+                let mut ptr_to_value_buffer: *const c_void = std::ptr::null();
+                let key_exists = workspace_dictionary.value_if_present(
+                    key_id64_ptr.as_ptr().cast::<c_void>().cast_const(),
+                    &mut ptr_to_value_buffer as *mut _,
+                );
+                assert!(key_exists);
+                assert!(!ptr_to_value_buffer.is_null());
+
+                let ptr_workspace_id = ptr_to_value_buffer.cast::<CFNumber>();
+                let workspace_id = (&*ptr_workspace_id).as_i32().unwrap();
+
+                workspaces_of_this_display.push(workspace_id);
+            }
+
+            ret.push(workspaces_of_this_display);
+        }
+
+        ret
+    }
+}
+
+fn move_window_to_workspace(
+    window_server_connection: CGSConnectionID,
+    window_id: CGWindowID,
+    source_workspace_id: CGSSpaceID,
+    target_workspace_id: CGSSpaceID,
+) {
+    println!("DBG:");
+
+    let window_id: CFRetained<CFNumber> = CFNumber::new_i64(window_id as i64).retain();
+    let window_ids = CFArray::from_retained_objects(&[window_id]);
+    let window_ids_non_ptr = CFRetained::as_ptr(&window_ids);
+    let window_ids_ptr: *const CFArray<CFNumber> = window_ids_non_ptr.as_ptr().cast_const();
+    let window_ids_ptr_opaque_type: *const CFArray = window_ids_ptr.cast();
+
+    let source_workspace_id: CFRetained<CFNumber> = CFNumber::new_i32(source_workspace_id).retain();
+    let source_workspace_ids = CFArray::from_retained_objects(&[source_workspace_id]);
+    let source_workspaces_ids_non_ptr = CFRetained::as_ptr(&source_workspace_ids);
+    let source_workspaces_ids_ptr: *const CFArray<CFNumber> =
+        source_workspaces_ids_non_ptr.as_ptr().cast_const();
+    let source_workspaces_ids_ptr_opaque_type: *const CFArray = source_workspaces_ids_ptr.cast();
+
+    let target_workspace_id: CFRetained<CFNumber> = CFNumber::new_i32(target_workspace_id).retain();
+    let target_workspace_ids = CFArray::from_retained_objects(&[target_workspace_id]);
+    let target_workspaces_ids_non_ptr = CFRetained::as_ptr(&target_workspace_ids);
+    let target_workspaces_ids_ptr: *const CFArray<CFNumber> =
+        target_workspaces_ids_non_ptr.as_ptr().cast_const();
+    let target_workspaces_ids_ptr_opaque_type: *const CFArray = target_workspaces_ids_ptr.cast();
+
+    unsafe {
+        private::CGSRemoveWindowsFromSpaces(
+            window_server_connection,
+            window_ids_ptr_opaque_type,
+            source_workspaces_ids_ptr_opaque_type,
+        );
+        private::CGSAddWindowsToSpaces(
+            window_server_connection,
+            window_ids_ptr_opaque_type,
+            target_workspaces_ids_ptr_opaque_type,
+        )
+    }
+}
+
+pub(crate) fn next_desktop() -> Result<(), Error> {
+    unsafe {
+        let window_server_connection = CGSMainConnectionID();
+        let frontmost_window_id = get_frontmost_window_id()?;
+        let current_workspace_id = CGSGetActiveSpace(window_server_connection);
+
+        for mut workspaces in workspace_ids_grouped_by_display() {
+            // Sort the IDs in ascending order
+            workspaces.sort();
+
+            match workspaces.binary_search(&current_workspace_id) {
+                Ok(index) => {
+                    // Found it!
+
+                    // If this is the last workspace, nothing to do!
+                    if index + 1 == workspaces.len() {
+                        return Err(Error::AlreadyInLastDesktop);
+                    }
+
+                    let new_workspace_id = workspaces[index + 1];
+                    move_window_to_workspace(
+                        window_server_connection,
+                        frontmost_window_id,
+                        current_workspace_id,
+                        new_workspace_id,
+                    );
+                    return Ok(());
+                }
+                Err(_) => {
+                    // The active workspace is not in this screen, check next one.
+                    continue;
+                }
+            }
+        }
+
+        unreachable!()
+    }
 }
 
 pub(crate) fn get_frontmost_window_origin() -> Result<CGPoint, Error> {
