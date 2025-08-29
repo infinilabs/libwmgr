@@ -1,14 +1,63 @@
-wmgr
+libwmgr
 
-Window manager for macOS:
+macOS Window manager Rust library.
 
-```sh
-$ wmgr left_half # move frontmost window to left screen
-```
+# Supported Commands
 
-# Supported commands
-
-* left_half
-* right_half
-* top_half
-* bottom_half
+- TopHalf
+- BottomHalf
+- LeftHalf
+- RightHalf
+- CenterHalf
+- TopLeftQuarter
+- TopRightQuarter
+- BottomLeftQuarter
+- BottomRightQuarter
+- TopLeftSixth
+- TopCenterSixth
+- TopRightSixth
+- BottomLeftSixth
+- BottomCenterSixth
+- BottomRightSixth
+- TopThird
+- MiddleThird
+- BottomThird
+- Center
+- FirstFourth
+- SecondFourth
+- ThirdFourth
+- LastFourth
+- FirstThird
+- CenterThird
+- LastThird
+- FirstTwoThirds
+- CenterTwoThirds
+- LastTwoThirds
+- FirstThreeFourths
+- CenterThreeFourths
+- LastThreeFourths
+- TopThreeFourths
+- BottomThreeFourths
+- TopTwoThirds
+- BottomTwoThirds
+- TopCenterTwoThirds
+- TopFirstFourth
+- TopSecondFourth
+- TopThirdFourth
+- TopLastFourth
+- MakeLarger
+- MakeSmaller
+- AlmostMaximize
+- Maximize
+- MaximizeWidth
+- MaximizeHeight
+- MoveUp
+- MoveDown
+- MoveLeft
+- MoveRight
+- NextDesktop
+- PreviousDesktop
+- NextDisplay
+- PreviousDisplay
+- Restore
+- ToggleFullscreen

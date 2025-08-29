@@ -74,7 +74,6 @@ pub enum Command {
     NextDisplay,
     PreviousDisplay,
 
-    // Restore
     Restore,
 
     ToggleFullscreen,
