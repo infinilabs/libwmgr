@@ -1,3 +1,5 @@
+mod private;
+
 use std::ffi::c_void;
 use std::ops::Deref;
 use std::ptr::NonNull;
