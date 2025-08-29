@@ -34,6 +34,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a82ae493e598baaea5209805c49bbf2ea7de956d50d7da0da1164f9c6d28543"
 
 [[package]]
+name = "libwmgr"
+version = "0.1.0"
+dependencies = [
+ "objc2",
+ "objc2-app-kit",
+ "objc2-application-services",
+ "objc2-core-foundation",
+ "objc2-core-graphics",
+ "serde",
+ "serde_plain",
+]
+
+[[package]]
 name = "objc2"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -273,16 +286,3 @@ name = "unicode-ident"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5a5f39404a5da50712a4c1eecf25e90dd62b613502b7e925fd4e4d19b5c96512"
-
-[[package]]
-name = "wmgr"
-version = "0.1.0"
-dependencies = [
- "objc2",
- "objc2-app-kit",
- "objc2-application-services",
- "objc2-core-foundation",
- "objc2-core-graphics",
- "serde",
- "serde_plain",
-]
