@@ -35,12 +35,10 @@ fn flip_frame_y(main_screen_height: f64, frame_height: f64, frame_unflipped_y: f
     main_screen_height - (frame_unflipped_y + frame_height)
 }
 
-fn get_frontmost_window() -> Result<Option<CFRetained<AXUIElement>>, AXError> {
+fn get_frontmost_window() -> Result<CFRetained<AXUIElement>, Error> {
     let workspace = unsafe { NSWorkspace::sharedWorkspace() };
-
-    let Some(frontmost_app) = (unsafe { workspace.frontmostApplication() }) else {
-        return Ok(None);
-    };
+    let frontmost_app =
+        unsafe { workspace.frontmostApplication() }.ok_or(Error::CannotFindFocusWindow)?;
 
     let pid = unsafe { frontmost_app.processIdentifier() };
 
@@ -54,7 +52,7 @@ fn get_frontmost_window() -> Result<Option<CFRetained<AXUIElement>>, AXError> {
         unsafe { app_element.copy_attribute_value(&focused_window_attr, ptr_to_window_element) };
 
     if error != AXError::Success {
-        return Err(error);
+        return Err(Error::AXError(error));
     }
     assert!(!window_element.is_null());
 
@@ -62,14 +60,11 @@ fn get_frontmost_window() -> Result<Option<CFRetained<AXUIElement>>, AXError> {
 
     let window = unsafe { CFRetained::from_raw(NonNull::new(window_element).unwrap()) };
 
-    Ok(Some(window))
+    Ok(window)
 }
 
-pub(crate) fn get_frontmost_window_origin() -> Result<Option<CGPoint>, AXError> {
-    let opt_frontmost_window = get_frontmost_window()?;
-    let Some(frontmost_window) = opt_frontmost_window else {
-        return Ok(None);
-    };
+pub(crate) fn get_frontmost_window_origin() -> Result<CGPoint, Error> {
+    let frontmost_window = get_frontmost_window()?;
 
     let mut position_value: *const CFType = std::ptr::null();
     let ptr_to_position_value = NonNull::new(&mut position_value).unwrap();
@@ -78,7 +73,7 @@ pub(crate) fn get_frontmost_window_origin() -> Result<Option<CGPoint>, AXError> 
         unsafe { frontmost_window.copy_attribute_value(&position_attr, ptr_to_position_value) };
 
     if error != AXError::Success {
-        return Err(error);
+        return Err(Error::AXError(error));
     }
     assert!(!position_value.is_null());
 
@@ -92,14 +87,11 @@ pub(crate) fn get_frontmost_window_origin() -> Result<Option<CGPoint>, AXError> 
     let result = unsafe { position.value(AXValueType::CGPoint, ptr_to_position_cg_point) };
     assert!(result, "type mismatched");
 
-    Ok(Some(position_cg_point))
+    Ok(position_cg_point)
 }
 
-pub(crate) fn get_frontmost_window_size() -> Result<Option<CGSize>, AXError> {
-    let opt_frontmost_window = get_frontmost_window()?;
-    let Some(frontmost_window) = opt_frontmost_window else {
-        return Ok(None);
-    };
+pub(crate) fn get_frontmost_window_size() -> Result<CGSize, Error> {
+    let frontmost_window = get_frontmost_window()?;
 
     let mut size_value: *const CFType = std::ptr::null();
     let ptr_to_size_value = NonNull::new(&mut size_value).unwrap();
@@ -107,7 +99,7 @@ pub(crate) fn get_frontmost_window_size() -> Result<Option<CGSize>, AXError> {
     let error = unsafe { frontmost_window.copy_attribute_value(&size_attr, ptr_to_size_value) };
 
     if error != AXError::Success {
-        return Err(error);
+        return Err(Error::AXError(error));
     }
     assert!(!size_value.is_null());
 
@@ -120,7 +112,7 @@ pub(crate) fn get_frontmost_window_size() -> Result<Option<CGSize>, AXError> {
     let result = unsafe { size.value(AXValueType::CGSize, ptr_to_size_cg_size) };
     assert!(result, "type mismatched");
 
-    Ok(Some(size_cg_size))
+    Ok(size_cg_size)
 }
 
 pub(crate) fn list_visible_frame_of_all_screens() -> Vec<CGRect> {
@@ -149,15 +141,11 @@ pub(crate) fn list_visible_frame_of_all_screens() -> Vec<CGRect> {
         .collect()
 }
 
-pub(crate) fn get_active_screen_visible_frame() -> Result<Option<CGRect>, AXError> {
-    let main_thread_marker = MainThreadMarker::new().expect("not in the main thread");
+pub(crate) fn get_active_screen_visible_frame() -> Result<CGRect, Error> {
+    let main_thread_marker = MainThreadMarker::new().ok_or(Error::NotInMainThread)?;
+    let main_screen = NSScreen::mainScreen(main_thread_marker).ok_or(Error::NoDisplay)?;
 
-    let Some(main_screen) = NSScreen::mainScreen(main_thread_marker) else {
-        return Ok(None);
-    };
-    let Some(frontmost_window_origin) = get_frontmost_window_origin()? else {
-        return Ok(None);
-    };
+    let frontmost_window_origin = get_frontmost_window_origin()?;
     let main_screen_height = main_screen.frame().size.height;
 
     // AppKit uses Unflipped Coordinate System, but Accessibility APIs use
@@ -184,19 +172,15 @@ pub(crate) fn get_active_screen_visible_frame() -> Result<Option<CGRect>, AXErro
         visible_frame.origin.y = flipped_y;
 
         if frame_contains_point(&frame, &frontmost_window_origin) {
-            return Ok(Some(visible_frame));
+            return Ok(visible_frame);
         }
     }
 
-    // TODO: it is possible that this window's origin is not in any screen!
-    todo!()
+    todo!("FIXME: it is possible that this window's origin is not in any screen!")
 }
 
 pub fn move_window(x: f64, y: f64) -> Result<(), Error> {
-    let opt_frontmost_window = get_frontmost_window().map_err(Error::AXError)?;
-    let Some(frontmost_window) = opt_frontmost_window else {
-        return Err(Error::CannotFindFocusWindow);
-    };
+    let frontmost_window = get_frontmost_window()?;
 
     let mut point = CGPoint::new(x, y);
     let ptr_to_point = NonNull::new((&mut point as *mut CGPoint).cast::<c_void>()).unwrap();
@@ -212,10 +196,7 @@ pub fn move_window(x: f64, y: f64) -> Result<(), Error> {
 }
 
 pub fn set_window_frame(frame: CGRect) -> Result<(), Error> {
-    let opt_frontmost_window = get_frontmost_window().map_err(Error::AXError)?;
-    let Some(frontmost_window) = opt_frontmost_window else {
-        return Err(Error::CannotFindFocusWindow);
-    };
+    let frontmost_window = get_frontmost_window()?;
 
     let mut point = frame.origin;
     let ptr_to_point = NonNull::new((&mut point as *mut CGPoint).cast::<c_void>()).unwrap();
@@ -241,11 +222,7 @@ pub fn set_window_frame(frame: CGRect) -> Result<(), Error> {
 }
 
 pub fn toggle_fullscreen() -> Result<(), Error> {
-    let opt_frontmost_window = get_frontmost_window().map_err(Error::AXError)?;
-    let Some(frontmost_window) = opt_frontmost_window else {
-        return Err(Error::CannotFindFocusWindow);
-    };
-
+    let frontmost_window = get_frontmost_window()?;
     let fullscreen_attr = CFString::from_static_str("AXFullScreen");
 
     let mut current_value_ref: *const CFType = std::ptr::null();

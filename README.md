@@ -2,7 +2,7 @@ libwmgr
 
 macOS Window manager Rust library.
 
-# Supported Commands
+# Supported Actions
 
 - TopHalf
 - BottomHalf

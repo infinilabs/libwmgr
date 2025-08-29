@@ -4,4 +4,6 @@ use objc2_application_services::AXError;
 pub enum Error {
     CannotFindFocusWindow,
     AXError(AXError),
+    NotInMainThread,
+    NoDisplay,
 }
